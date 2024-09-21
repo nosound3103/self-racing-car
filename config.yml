@@ -1,0 +1,14 @@
+Env:
+  WIDTH: 800
+  HEIGHT: 600
+  NUM_CARS: 5
+  FPS: 60
+
+Car:
+  IMAGE: images\car.png
+  SIZE_X: 60
+  SIZE_Y: 60
+  MAX_SPEED: 30
+  ACCELERATION: 1
+  BRAKING: 1
+  TURNING: 1
