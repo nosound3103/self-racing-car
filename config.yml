@@ -8,7 +8,8 @@ Car:
   IMAGE: images\car.png
   SIZE_X: 60
   SIZE_Y: 60
-  MAX_SPEED: 30
-  ACCELERATION: 1
-  BRAKING: 1
-  TURNING: 1
+  MAX_SPEED: 5
+  SPEED_UP: 0.1
+  SLOW_DOWN: -1.5
+  MIN_SPEED: -5
+  TURN_SPEED: 1.5
