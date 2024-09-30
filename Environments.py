@@ -15,6 +15,9 @@ class Environment:
 
         self.screen = pygame.display.set_mode(
             (cfg["Env"]["WIDTH"], cfg["Env"]["HEIGHT"]))
+        self.game_map = pygame.image.load("ref/map.png").convert()
+        self.game_map = pygame.transform.scale(
+            self.game_map, (cfg["Env"]["WIDTH"], cfg["Env"]["HEIGHT"]))
 
         pygame.display.set_caption("Car Racing")
 
@@ -25,26 +28,27 @@ class Environment:
         self.clock = pygame.time.Clock()
 
     def draw_background(self):
-        self.screen.fill((255, 255, 255))
+        self.screen.blit(self.game_map, (0, 0))
 
     def run(self):
         running = True
         while running:
+            self.draw_background()
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
 
             keys = pygame.key.get_pressed()
+            for car in self.all_car_sprites:
+                car.update(keys)
+                self.screen.blit(car.rotated_image, car.rect)
 
-            if keys[pygame.K_UP]:
-                pass
-            if keys[pygame.K_DOWN]:
-                pass
-
-            self.draw_background()
-            self.all_car_sprites.update()
-            self.all_car_sprites.draw(self.screen)
             pygame.display.flip()
+            pygame.display.update()
             self.clock.tick(cfg["Env"]["FPS"])
 
         pygame.quit()
+
+
+env = Environment()
+env.run()

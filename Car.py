@@ -30,10 +30,13 @@ class Car(pygame.sprite.Sprite):
         self.rotated_image = pygame.transform.rotate(self.image, -self.angle)
         self.rect = self.rotated_image.get_rect(center=self.rect.center)
 
-        new_x_direction = self.directions[0] * math.cos(math.radians(
-            angle_change)) - self.directions[1] * math.sin(math.radians(angle_change))
-        new_y_direction = self.directions[0] * math.sin(math.radians(
-            angle_change)) + self.directions[1] * math.cos(math.radians(angle_change))
+        cos_angle = math.cos(math.radians(self.angle))
+        sin_angle = math.sin(math.radians(self.angle))
+
+        new_x_direction = self.directions[0] * \
+            cos_angle - self.directions[1] * sin_angle
+        new_y_direction = self.directions[0] * \
+            sin_angle + self.directions[1] * cos_angle
 
         self.directions = [new_x_direction, new_y_direction]
 
@@ -63,8 +66,17 @@ class Car(pygame.sprite.Sprite):
             self.directions[0] * slow_down_speed, self.directions[1] * slow_down_speed)
         print("Slow down:", self.speed)
 
-    # def update(self):
-    #     pass
+    def update(self, keys_pressed):
+        if keys_pressed[pygame.K_RIGHT]:
+            self.turn(5)
+        if keys_pressed[pygame.K_LEFT]:
+            self.turn(-5)
+
+        if keys_pressed[pygame.K_UP]:
+            self.accelerate()
+
+        if keys_pressed[pygame.K_DOWN]:
+            self.brake()
 
         # def reset(self):
         #     pass
@@ -91,44 +103,34 @@ class Car(pygame.sprite.Sprite):
     #     pass
 
 
-pygame.init()
+# pygame.init()
 
-screen = pygame.display.set_mode(
-    (config["Env"]["WIDTH"], config["Env"]["HEIGHT"]))
-pygame.display.set_caption("Car Racing")
+# screen = pygame.display.set_mode(
+#     (config["Env"]["WIDTH"], config["Env"]["HEIGHT"]))
+# pygame.display.set_caption("Car Racing")
 
-game_map = pygame.image.load("ref/map.png").convert()
-game_map = pygame.transform.scale(
-    game_map, (config["Env"]["WIDTH"], config["Env"]["HEIGHT"]))
+# game_map = pygame.image.load("ref/map.png").convert()
+# game_map = pygame.transform.scale(
+#     game_map, (config["Env"]["WIDTH"], config["Env"]["HEIGHT"]))
 
-car = Car(speed=2)
+# car = Car(speed=2)
 
-running = True
-clock = pygame.time.Clock()
-angle = 0
+# running = True
+# clock = pygame.time.Clock()
+# angle = 0
 
-while running:
-    screen.blit(game_map, (0, 0))
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+# while running:
+#     screen.blit(game_map, (0, 0))
+#     for event in pygame.event.get():
+#         if event.type == pygame.QUIT:
+#             running = False
 
-    keys = pygame.key.get_pressed()
+#     keys = pygame.key.get_pressed()
+#     car.update(keys)
 
-    if keys[pygame.K_RIGHT]:
-        car.turn(5)
-    if keys[pygame.K_LEFT]:
-        car.turn(-5)
+#     screen.blit(car.rotated_image, car.rect)
+#     pygame.display.update()
+#     pygame.display.flip()
+#     clock.tick(60)
 
-    if keys[pygame.K_UP]:
-        car.accelerate()
-
-    if keys[pygame.K_DOWN]:
-        car.brake()
-
-    screen.blit(car.rotated_image, car.rect)
-    pygame.display.update()
-    pygame.display.flip()
-    clock.tick(60)
-
-pygame.quit()
+# pygame.quit()
