@@ -12,6 +12,12 @@ class Car(pygame.sprite.Sprite):
         super().__init__()
         self.cfg = cfg
         self.image = pygame.image.load(self.cfg["IMAGE"]).convert_alpha()
+        self.image = pygame.transform.scale(
+            self.image, (self.cfg["WIDTH"], self.cfg["HEIGHT"]))
+
+        self.diagonal = math.sqrt(
+            (self.cfg["WIDTH"]/2) ** 2 + (self.cfg["HEIGHT"]/2) ** 2)
+
         self.rotated_image = self.image
         self.rect = self.rotated_image.get_rect()
         self.rect.x = 50
@@ -30,25 +36,41 @@ class Car(pygame.sprite.Sprite):
             "right": [a - b for (a, b) in zip(self.rect.midright, self.rect.center)],
             "front_left": [a - b for (a, b) in zip(self.rect.topleft, self.rect.center)],
             "left": [a - b for (a, b) in zip(self.rect.midleft, self.rect.center)],
+            "back": [a - b for (a, b) in zip(self.rect.midbottom, self.rect.center)],
+            "back_right": [a - b for (a, b) in zip(self.rect.bottomright, self.rect.center)],
+            "back_left": [a - b for (a, b) in zip(self.rect.bottomleft, self.rect.center)]
         }
 
-        self.sensors_directions = {direction: [coords[0] / np.linalg.norm(coords), coords[1] / np.linalg.norm(
-            coords)] for (direction, coords) in self.sensors_directions.items()}
+        self.sensors_directions = {
+            direction: [
+                coords[0] / np.linalg.norm(coords),
+                coords[1] / np.linalg.norm(coords)]
+            for (direction, coords) in self.sensors_directions.items()}
+
+        self.calc_corners()
+
+    def rotate_vector(self, angle_change, vector, points=[0, 0]):
+        cos_angle = math.cos(math.radians(angle_change))
+        sin_angle = math.sin(math.radians(angle_change))
+        x = vector[0]
+        y = vector[1]
+        o_x = points[0]
+        o_y = points[1]
+
+        new_x = (x - o_x) * cos_angle - \
+            (y - o_y) * sin_angle + o_x
+        new_y = (x - o_x) * sin_angle + \
+            (y - o_y) * cos_angle + o_y
+        return [new_x, new_y]
 
     def turn(self, angle_change):
         self.angle += angle_change
         self.rotated_image = pygame.transform.rotate(self.image, -self.angle)
         self.rect = self.rotated_image.get_rect(center=self.rect.center)
 
-        cos_angle = math.cos(math.radians(angle_change))
-        sin_angle = math.sin(math.radians(angle_change))
-
         for direction, vector in self.sensors_directions.items():
-            x = vector[0]
-            y = vector[1]
-            new_x = x * cos_angle - y * sin_angle
-            new_y = x * sin_angle + y * cos_angle
-            self.sensors_directions[direction] = [new_x, new_y]
+            self.sensors_directions[direction] = self.rotate_vector(
+                angle_change=angle_change, vector=vector)
 
         if angle_change > 0:
             print("Turn right: ", self.angle, "with speed: ", self.speed)
@@ -60,30 +82,46 @@ class Car(pygame.sprite.Sprite):
         if self.speed > self.max_speed:
             self.speed = self.max_speed
 
-        self.rect = self.rect.move(
-            self.sensors_directions["front"][0] * self.speed,
-            self.sensors_directions["front"][1] * self.speed)
+        x_speed = self.sensors_directions["front"][0] * self.speed
+        y_speed = self.sensors_directions["front"][1] * self.speed
+
+        self.rect.move_ip(x_speed, y_speed)
 
         print("Speed up: ", self.speed)
 
     def brake(self):
-        self.speed += self.slow_down
-        if self.speed < self.min_speed:
-            self.speed = self.min_speed
+        # self.speed += self.slow_down
+        # if self.speed < self.min_speed:
+        #     self.speed = self.min_speed
 
-        slow_down_speed = self.slow_down if self.speed > self.min_speed \
-            else self.speed
+        # slow_down_speed = self.slow_down if self.speed > self.min_speed \
+        #     else self.speed
 
-        self.rect = self.rect.move(
-            self.sensors_directions["front"][0] * slow_down_speed,
-            self.sensors_directions["front"][1] * slow_down_speed)
+        # self.rect = self.rect.move(
+        #     self.sensors_directions["front"][0] * slow_down_speed,
+        #     self.sensors_directions["front"][1] * slow_down_speed)
+
+        x_slow_down = self.sensors_directions["front"][0] * self.slow_down
+        y_slow_down = self.sensors_directions["front"][1] * self.slow_down
+        self.rect.move_ip(x_slow_down, y_slow_down)
+
         print("Slow down:", self.speed)
+
+    def momentum(self):
+        self.speed += -0.2
+        if self.speed < 0:
+            self.speed = 0
+
+        x_speed = self.sensors_directions["front"][0] * self.speed
+        y_speed = self.sensors_directions["front"][1] * self.speed
+        self.rect.move_ip(x_speed, y_speed)
 
     def update(self, keys_pressed):
         if keys_pressed[pygame.K_RIGHT]:
-            self.turn(5)
+            self.turn(3)
+
         if keys_pressed[pygame.K_LEFT]:
-            self.turn(-5)
+            self.turn(-3)
 
         if keys_pressed[pygame.K_UP]:
             self.accelerate()
@@ -91,14 +129,28 @@ class Car(pygame.sprite.Sprite):
         if keys_pressed[pygame.K_DOWN]:
             self.brake()
 
+        if not keys_pressed[pygame.K_UP]:
+            self.momentum()
+
+        self.calc_corners()
+
     def reset(self):
         pass
 
     def draw(self, screen):
         pass
 
+    def calc_corners(self):
+        self.corners = np.array([
+            self.sensors_directions["front_left"],
+            self.sensors_directions["front_right"],
+            self.sensors_directions["back_right"],
+            self.sensors_directions["back_left"]])
+        self.corners *= self.diagonal
+        self.corners += np.array(self.rect.center)
+
     def calc_sensors(self):
-        return {direction: [coord * 100 for coord in vector]
+        return {direction: [coord for coord in vector]
                 for (direction, vector) in self.sensors_directions.items()}
 
     def is_collided(self, game_map):
@@ -114,7 +166,7 @@ screen = pygame.display.set_mode(
     (config["Env"]["WIDTH"], config["Env"]["HEIGHT"]))
 pygame.display.set_caption("Car Racing")
 
-game_map = pygame.image.load("ref/map.png").convert()
+game_map = pygame.image.load("images/test_map.png").convert()
 game_map = pygame.transform.scale(
     game_map, (config["Env"]["WIDTH"], config["Env"]["HEIGHT"]))
 
@@ -140,6 +192,7 @@ while running:
                     car.rect.center[1] + vector[1])
         pygame.draw.line(screen, (0, 255, 0), car.rect.center, position, 1)
 
+    pygame.draw.polygon(screen, (255, 0, 0), car.corners, 1)
     pygame.display.update()
     pygame.display.flip()
     clock.tick(60)

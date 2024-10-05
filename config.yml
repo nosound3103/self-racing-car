@@ -6,10 +6,10 @@ Env:
 
 Car:
   IMAGE: images\car.png
-  SIZE_X: 60
-  SIZE_Y: 60
-  MAX_SPEED: 5
-  SPEED_UP: 0.1
-  SLOW_DOWN: -1.5
+  WIDTH: 36
+  HEIGHT: 80
+  MAX_SPEED: 10
+  SPEED_UP: 1
+  SLOW_DOWN: -3
   MIN_SPEED: -5
   TURN_SPEED: 1.5
