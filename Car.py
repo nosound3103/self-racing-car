@@ -2,6 +2,10 @@ import pygame
 import yaml
 import math
 import numpy as np
+import cv2
+
+from shapely.geometry import Polygon, LineString
+from shapely.affinity import scale
 
 with open("config.yml", "r") as file:
     config = yaml.load(file, Loader=yaml.FullLoader)
@@ -20,8 +24,8 @@ class Car(pygame.sprite.Sprite):
 
         self.rotated_image = self.image
         self.rect = self.rotated_image.get_rect()
-        self.rect.x = 50
-        self.rect.y = 50
+        self.rect.x = 400
+        self.rect.y = 300
         self.angle = 0
         self.speed = speed
         self.max_speed = self.cfg["MAX_SPEED"]
@@ -149,26 +153,86 @@ class Car(pygame.sprite.Sprite):
         self.corners *= self.diagonal
         self.corners += np.array(self.rect.center)
 
-    def calc_sensors(self):
-        return {direction: [coord for coord in vector]
-                for (direction, vector) in self.sensors_directions.items()}
+    def calc_sensors(self, boundary=None):
+        sensors = {}
 
-    def is_collided(self, game_map):
-        pass
+        if not boundary.size:
+            return sensors
 
-    def is_alive(self):
-        pass
+        for (direction, vector) in self.sensors_directions.items():
+            if direction not in ["front", "front_right", "right", "front_left", "left"]:
+                continue
+
+            intersection = self.find_intersection(np.array(vector), boundary)
+
+            sensors[direction] = intersection
+
+        return sensors
+
+    def find_intersection(self, d, boundary):
+        closest_intersection = None
+        min_t = float('inf')
+
+        for i in range(len(boundary)):
+            A_i = np.array(boundary[i])
+            A_next = np.array(boundary[(i+1) % len(boundary)])
+
+            segment_direction = A_next - A_i
+
+            matrix = np.array([d, -segment_direction]).T
+            rhs = A_i - self.rect.center
+
+            try:
+                ts = np.linalg.solve(matrix, rhs)
+                t, s = ts
+
+                if 0 <= s <= 1 and t >= 0:
+                    if t < min_t:
+                        min_t = t
+                        closest_intersection = self.rect.center + t * d
+            except np.linalg.LinAlgError:
+
+                continue
+
+        return closest_intersection
+
+    def is_collided(self, boundary):
+        car_boundary = Polygon(self.corners)
+        boundary = Polygon(boundary)
+
+        intersection = car_boundary.intersection(boundary).area
+        union = car_boundary.area
+
+        iou = intersection / union
+
+        return iou < 0.95
+
+
+def find_contours(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
+    contours, _ = cv2.findContours(
+        thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    return contours[1] if len(contours) == 2 else contours[0] \
+        if len(contours) == 1 else None
 
 
 pygame.init()
 
 screen = pygame.display.set_mode(
     (config["Env"]["WIDTH"], config["Env"]["HEIGHT"]))
+
 pygame.display.set_caption("Car Racing")
 
-game_map = pygame.image.load("images/test_map.png").convert()
+map = cv2.imread(
+    "images/test_map_2.png")
+map = cv2.resize(map, (config["Env"]["WIDTH"], config["Env"]
+                 ["HEIGHT"]), interpolation=cv2.INTER_AREA)
+game_map = pygame.image.load("images/test_map_2.png").convert()
 game_map = pygame.transform.scale(
     game_map, (config["Env"]["WIDTH"], config["Env"]["HEIGHT"]))
+
+boundary = find_contours(map).reshape(-1, 2)
 
 car = Car(speed=2)
 
@@ -177,6 +241,10 @@ clock = pygame.time.Clock()
 angle = 0
 
 while running:
+    # if car.is_collided(boundary):
+    #     print("Died")
+    #     break
+
     screen.blit(game_map, (0, 0))
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -186,13 +254,19 @@ while running:
     car.update(keys)
 
     screen.blit(car.rotated_image, car.rect)
-    sensors = car.calc_sensors()
-    for direction, vector in sensors.items():
-        position = (car.rect.center[0] + vector[0],
-                    car.rect.center[1] + vector[1])
-        pygame.draw.line(screen, (0, 255, 0), car.rect.center, position, 1)
+
+    sensors = car.calc_sensors(boundary=boundary)
+
+    if len(sensors):
+        for direction, vector in sensors.items():
+            try:
+                pygame.draw.line(screen, (0, 255, 0),
+                                 car.rect.center, vector, 1)
+            except:
+                continue
 
     pygame.draw.polygon(screen, (255, 0, 0), car.corners, 1)
+    pygame.draw.polygon(screen, (0, 0, 255), boundary, 1)
     pygame.display.update()
     pygame.display.flip()
     clock.tick(60)

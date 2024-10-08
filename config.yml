@@ -1,7 +1,7 @@
 Env:
   WIDTH: 800
   HEIGHT: 600
-  NUM_CARS: 5
+  NUM_CARS: 1
   FPS: 60
 
 Car:
