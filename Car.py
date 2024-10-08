@@ -3,8 +3,9 @@ import yaml
 import math
 import numpy as np
 import cv2
+import shapely
 
-from shapely.geometry import Polygon, LineString
+from shapely.geometry import Polygon, LineString, Point
 from shapely.affinity import scale
 
 with open("config.yml", "r") as file:
@@ -122,10 +123,10 @@ class Car(pygame.sprite.Sprite):
 
     def update(self, keys_pressed):
         if keys_pressed[pygame.K_RIGHT]:
-            self.turn(3)
+            self.turn(8)
 
         if keys_pressed[pygame.K_LEFT]:
-            self.turn(-3)
+            self.turn(-8)
 
         if keys_pressed[pygame.K_UP]:
             self.accelerate()
@@ -169,32 +170,18 @@ class Car(pygame.sprite.Sprite):
 
         return sensors
 
-    def find_intersection(self, d, boundary):
-        closest_intersection = None
-        min_t = float('inf')
+    def find_intersection(self, vector, boundary):
+        boundary = Polygon(boundary)
 
-        for i in range(len(boundary)):
-            A_i = np.array(boundary[i])
-            A_next = np.array(boundary[(i+1) % len(boundary)])
+        extended_point = Point(
+            self.rect.centerx + vector[0] * 10000,
+            self.rect.centery + vector[1] * 10000)
+        line = LineString([self.rect.center, extended_point])
 
-            segment_direction = A_next - A_i
+        intersection = line.intersection(boundary)
 
-            matrix = np.array([d, -segment_direction]).T
-            rhs = A_i - self.rect.center
-
-            try:
-                ts = np.linalg.solve(matrix, rhs)
-                t, s = ts
-
-                if 0 <= s <= 1 and t >= 0:
-                    if t < min_t:
-                        min_t = t
-                        closest_intersection = self.rect.center + t * d
-            except np.linalg.LinAlgError:
-
-                continue
-
-        return closest_intersection
+        return shapely.get_coordinates(intersection)[1] \
+            if shapely.get_coordinates(intersection).size >= 4 else None
 
     def is_collided(self, boundary):
         car_boundary = Polygon(self.corners)
