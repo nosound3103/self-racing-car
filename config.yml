@@ -1,6 +1,6 @@
 Env:
-  WIDTH: 800
-  HEIGHT: 600
+  WIDTH: 1600
+  HEIGHT: 800
   NUM_CARS: 1
   FPS: 60
 
@@ -8,8 +8,8 @@ Car:
   IMAGE: images\car.png
   WIDTH: 36
   HEIGHT: 80
-  MAX_SPEED: 10
-  SPEED_UP: 1
-  SLOW_DOWN: -3
+  MAX_SPEED: 8
+  SPEED_UP: 0.2
+  BACKWARD: -5
   MIN_SPEED: -5
-  TURN_SPEED: 1.5
+  TURN_ANGLE: 7

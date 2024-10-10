@@ -2,18 +2,20 @@ import pygame
 import yaml
 import math
 import numpy as np
-import cv2
 import shapely
 
 from shapely.geometry import Polygon, LineString, Point
-from shapely.affinity import scale
+
+import utils
+
+from Timer import Timer
 
 with open("config.yml", "r") as file:
     config = yaml.load(file, Loader=yaml.FullLoader)
 
 
 class Car(pygame.sprite.Sprite):
-    def __init__(self, cfg=config["Car"], speed=3):
+    def __init__(self, cfg=config["Car"]):
         super().__init__()
         self.cfg = cfg
         self.image = pygame.image.load(self.cfg["IMAGE"]).convert_alpha()
@@ -28,22 +30,30 @@ class Car(pygame.sprite.Sprite):
         self.rect.x = 400
         self.rect.y = 300
         self.angle = 0
-        self.speed = speed
-        self.max_speed = self.cfg["MAX_SPEED"]
-        self.min_speed = self.cfg["MIN_SPEED"]
+        self.speed = 0
         self.speed_up = self.cfg["SPEED_UP"]
-        self.slow_down = self.cfg["SLOW_DOWN"]
-        self.turn_speed = self.cfg["TURN_SPEED"]
+        self.max_speed = self.cfg["MAX_SPEED"]
+        self.speed_up = self.cfg["SPEED_UP"]
+        self.go_backward = self.cfg["BACKWARD"]
+        self.turn_angle = self.cfg["TURN_ANGLE"]
+
+        self.timers = {
+            "forward": Timer(0.1),
+            "left": Timer(0.1),
+            "right": Timer(0.1),
+            "backward": Timer(0.1),
+            "momentum": Timer(0.1)
+        }
 
         self.sensors_directions = {
-            "front": [a - b for (a, b) in zip(self.rect.midtop, self.rect.center)],
-            "front_right": [a - b for (a, b) in zip(self.rect.topright, self.rect.center)],
-            "right": [a - b for (a, b) in zip(self.rect.midright, self.rect.center)],
-            "front_left": [a - b for (a, b) in zip(self.rect.topleft, self.rect.center)],
-            "left": [a - b for (a, b) in zip(self.rect.midleft, self.rect.center)],
-            "back": [a - b for (a, b) in zip(self.rect.midbottom, self.rect.center)],
-            "back_right": [a - b for (a, b) in zip(self.rect.bottomright, self.rect.center)],
-            "back_left": [a - b for (a, b) in zip(self.rect.bottomleft, self.rect.center)]
+            "f": utils.subtract(self.rect.midtop, self.rect.center),
+            "f_r":  utils.subtract(self.rect.topright, self.rect.center),
+            "r":  utils.subtract(self.rect.midright, self.rect.center),
+            "f_l":  utils.subtract(self.rect.topleft, self.rect.center),
+            "l":  utils.subtract(self.rect.midleft, self.rect.center),
+            "b":  utils.subtract(self.rect.midbottom, self.rect.center),
+            "b_r":  utils.subtract(self.rect.bottomright, self.rect.center),
+            "b_l":  utils.subtract(self.rect.bottomleft, self.rect.center)
         }
 
         self.sensors_directions = {
@@ -54,7 +64,7 @@ class Car(pygame.sprite.Sprite):
 
         self.calc_corners()
 
-    def rotate_vector(self, angle_change, vector, points=[0, 0]):
+    def rotate_transform(self, angle_change, vector, points=[0, 0]):
         cos_angle = math.cos(math.radians(angle_change))
         sin_angle = math.sin(math.radians(angle_change))
         x = vector[0]
@@ -62,10 +72,8 @@ class Car(pygame.sprite.Sprite):
         o_x = points[0]
         o_y = points[1]
 
-        new_x = (x - o_x) * cos_angle - \
-            (y - o_y) * sin_angle + o_x
-        new_y = (x - o_x) * sin_angle + \
-            (y - o_y) * cos_angle + o_y
+        new_x = (x - o_x) * cos_angle - (y - o_y) * sin_angle + o_x
+        new_y = (x - o_x) * sin_angle + (y - o_y) * cos_angle + o_y
         return [new_x, new_y]
 
     def turn(self, angle_change):
@@ -74,7 +82,7 @@ class Car(pygame.sprite.Sprite):
         self.rect = self.rotated_image.get_rect(center=self.rect.center)
 
         for direction, vector in self.sensors_directions.items():
-            self.sensors_directions[direction] = self.rotate_vector(
+            self.sensors_directions[direction] = self.rotate_transform(
                 angle_change=angle_change, vector=vector)
 
         if angle_change > 0:
@@ -82,75 +90,70 @@ class Car(pygame.sprite.Sprite):
         else:
             print("Turn left: ", self.angle, "with speed: ", self.speed)
 
+    def translation_transform(self, amount_speed):
+        x_speed = round(self.sensors_directions["f"][0] * amount_speed)
+        y_speed = round(self.sensors_directions["f"][1] * amount_speed)
+        self.rect.move_ip(x_speed, y_speed)
+
     def accelerate(self):
         self.speed += self.speed_up
         if self.speed > self.max_speed:
             self.speed = self.max_speed
 
-        x_speed = self.sensors_directions["front"][0] * self.speed
-        y_speed = self.sensors_directions["front"][1] * self.speed
-
-        self.rect.move_ip(x_speed, y_speed)
+        self.translation_transform(self.speed)
 
         print("Speed up: ", self.speed)
 
-    def brake(self):
-        # self.speed += self.slow_down
-        # if self.speed < self.min_speed:
-        #     self.speed = self.min_speed
+    def backward(self):
+        self.translation_transform(self.go_backward)
 
-        # slow_down_speed = self.slow_down if self.speed > self.min_speed \
-        #     else self.speed
-
-        # self.rect = self.rect.move(
-        #     self.sensors_directions["front"][0] * slow_down_speed,
-        #     self.sensors_directions["front"][1] * slow_down_speed)
-
-        x_slow_down = self.sensors_directions["front"][0] * self.slow_down
-        y_slow_down = self.sensors_directions["front"][1] * self.slow_down
-        self.rect.move_ip(x_slow_down, y_slow_down)
-
-        print("Slow down:", self.speed)
+        print("Backward:", self.go_backward)
 
     def momentum(self):
         self.speed += -0.2
         if self.speed < 0:
             self.speed = 0
 
-        x_speed = self.sensors_directions["front"][0] * self.speed
-        y_speed = self.sensors_directions["front"][1] * self.speed
-        self.rect.move_ip(x_speed, y_speed)
+        self.translation_transform(self.speed)
 
     def update(self, keys_pressed):
-        if keys_pressed[pygame.K_RIGHT]:
-            self.turn(8)
+        if not self.timers["forward"].active:
+            if keys_pressed[pygame.K_UP]:
+                self.accelerate()
+                self.timers["forward"].activate()
 
-        if keys_pressed[pygame.K_LEFT]:
-            self.turn(-8)
+        if not self.timers["left"].active:
+            if keys_pressed[pygame.K_LEFT]:
+                self.turn(-self.turn_angle)
+                self.timers["left"].activate()
 
-        if keys_pressed[pygame.K_UP]:
-            self.accelerate()
+        if not self.timers["right"].active:
+            if keys_pressed[pygame.K_RIGHT]:
+                self.turn(self.turn_angle)
+                self.timers["right"].activate()
 
-        if keys_pressed[pygame.K_DOWN]:
-            self.brake()
+        if not self.timers["backward"].active:
+            if keys_pressed[pygame.K_DOWN]:
+                self.backward()
+                self.timers["backward"].activate()
 
-        if not keys_pressed[pygame.K_UP]:
-            self.momentum()
+        if not self.timers["momentum"].active:
+            if not keys_pressed[pygame.K_UP]:
+                self.momentum()
+                self.timers["momentum"].activate()
 
+        [self.timers[action].update() for action in self.timers.keys()]
         self.calc_corners()
 
     def reset(self):
         pass
 
-    def draw(self, screen):
-        pass
-
     def calc_corners(self):
         self.corners = np.array([
-            self.sensors_directions["front_left"],
-            self.sensors_directions["front_right"],
-            self.sensors_directions["back_right"],
-            self.sensors_directions["back_left"]])
+            self.sensors_directions["f_l"],
+            self.sensors_directions["f_r"],
+            self.sensors_directions["b_r"],
+            self.sensors_directions["b_l"]])
         self.corners *= self.diagonal
         self.corners += np.array(self.rect.center)
 
@@ -161,7 +164,7 @@ class Car(pygame.sprite.Sprite):
             return sensors
 
         for (direction, vector) in self.sensors_directions.items():
-            if direction not in ["front", "front_right", "right", "front_left", "left"]:
+            if direction not in ["f", "f_r", "r", "f_l", "l"]:
                 continue
 
             intersection = self.find_intersection(np.array(vector), boundary)
@@ -195,67 +198,58 @@ class Car(pygame.sprite.Sprite):
         return iou < 0.95
 
 
-def find_contours(image):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    _, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
-    contours, _ = cv2.findContours(
-        thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    return contours[1] if len(contours) == 2 else contours[0] \
-        if len(contours) == 1 else None
+# pygame.init()
 
+# screen = pygame.display.set_mode(
+#     (config["Env"]["WIDTH"], config["Env"]["HEIGHT"]))
 
-pygame.init()
+# pygame.display.set_caption("Car Racing")
 
-screen = pygame.display.set_mode(
-    (config["Env"]["WIDTH"], config["Env"]["HEIGHT"]))
+# map = cv2.imread(
+#     "images/test_map_2.png")
+# map = cv2.resize(map, (config["Env"]["WIDTH"], config["Env"]
+#                  ["HEIGHT"]), interpolation=cv2.INTER_AREA)
+# game_map = pygame.image.load("images/test_map_2.png").convert()
+# game_map = pygame.transform.scale(
+#     game_map, (config["Env"]["WIDTH"], config["Env"]["HEIGHT"]))
 
-pygame.display.set_caption("Car Racing")
+# boundary = find_contours(map).reshape(-1, 2)
 
-map = cv2.imread(
-    "images/test_map_2.png")
-map = cv2.resize(map, (config["Env"]["WIDTH"], config["Env"]
-                 ["HEIGHT"]), interpolation=cv2.INTER_AREA)
-game_map = pygame.image.load("images/test_map_2.png").convert()
-game_map = pygame.transform.scale(
-    game_map, (config["Env"]["WIDTH"], config["Env"]["HEIGHT"]))
+# car = Car(speed=2)
 
-boundary = find_contours(map).reshape(-1, 2)
+# running = True
+# clock = pygame.time.Clock()
+# angle = 0
 
-car = Car(speed=2)
+# while running:
+#     # if car.is_collided(boundary):
+#     #     print("Died")
+#     #     break
 
-running = True
-clock = pygame.time.Clock()
-angle = 0
+#     screen.blit(game_map, (0, 0))
+#     for event in pygame.event.get():
+#         if event.type == pygame.QUIT:
+#             running = False
 
-while running:
-    # if car.is_collided(boundary):
-    #     print("Died")
-    #     break
+#     keys = pygame.key.get_pressed()
+#     car.update(keys)
 
-    screen.blit(game_map, (0, 0))
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+#     screen.blit(car.rotated_image, car.rect)
 
-    keys = pygame.key.get_pressed()
-    car.update(keys)
+#     sensors = car.calc_sensors(boundary=boundary)
 
-    screen.blit(car.rotated_image, car.rect)
+#     if len(sensors):
+#         for direction, vector in sensors.items():
+#             try:
+#                 pygame.draw.line(screen, (0, 255, 0),
+#                                  car.rect.center, vector, 1)
+#             except Exception:
+#                 continue
 
-    sensors = car.calc_sensors(boundary=boundary)
+#     pygame.draw.polygon(screen, (255, 0, 0), car.corners, 1)
+#     pygame.draw.polygon(screen, (0, 0, 255), boundary, 1)
+#     pygame.display.update()
+#     pygame.display.flip()
+#     clock.tick(60)
 
-    if len(sensors):
-        for direction, vector in sensors.items():
-            try:
-                pygame.draw.line(screen, (0, 255, 0),
-                                 car.rect.center, vector, 1)
-            except:
-                continue
-
-    pygame.draw.polygon(screen, (255, 0, 0), car.corners, 1)
-    pygame.draw.polygon(screen, (0, 0, 255), boundary, 1)
-    pygame.display.update()
-    pygame.display.flip()
-    clock.tick(60)
-
-pygame.quit()
+# pygame.quit()

@@ -3,6 +3,7 @@ import yaml
 import random
 import cv2
 
+import utils
 from Car import Car
 
 random.seed(0)
@@ -30,23 +31,25 @@ class Environment:
 
         self.all_car_sprites = pygame.sprite.Group()
         for _ in range(cfg["Env"]["NUM_CARS"]):
-            self.all_car_sprites.add(Car(speed=random.randint(1, 6)))
+            self.all_car_sprites.add(Car())
 
         self.clock = pygame.time.Clock()
 
     def draw_background(self):
         self.screen.blit(self.game_map, (0, 0))
 
-    def find_contours(self):
-        gray = cv2.cvtColor(self.map, cv2.COLOR_BGR2GRAY)
-        _, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
-        contours, _ = cv2.findContours(
-            thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        return contours[1] if len(contours) == 2 else contours[0] \
-            if len(contours) == 1 else None
+    def reset(self):
+        for car in self.all_car_sprites:
+            car.reset()
+
+    def step(self, action):
+        pass
+
+    def get_state(self):
+        pass
 
     def run(self):
-        boundary = self.find_contours().reshape(-1, 2)
+        boundary = utils.find_contours(self.map).reshape(-1, 2)
 
         running = True
         while running:
@@ -65,11 +68,11 @@ class Environment:
                 # pygame.draw.polygon(self.screen, (255, 0, 0), car.corners, 1)
                 sensors = car.calc_sensors(boundary=boundary)
                 if len(sensors):
-                    for direction, vector in sensors.items():
+                    for _, vector in sensors.items():
                         try:
                             pygame.draw.line(self.screen, (0, 255, 0),
                                              car.rect.center, vector, 1)
-                        except:
+                        except Exception:
                             continue
 
             pygame.draw.polygon(self.screen, (0, 0, 255), boundary, 1)
@@ -78,9 +81,6 @@ class Environment:
             self.clock.tick(cfg["Env"]["FPS"])
 
         pygame.quit()
-
-    def segment(self):
-        pass
 
 
 env = Environment()
