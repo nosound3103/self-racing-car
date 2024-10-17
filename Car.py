@@ -25,10 +25,13 @@ class Car(pygame.sprite.Sprite):
         self.diagonal = math.sqrt(
             (self.cfg["WIDTH"]/2) ** 2 + (self.cfg["HEIGHT"]/2) ** 2)
 
+        self.horizontal_size = self.cfg["WIDTH"]
+        self.vertical_size = self.cfg["HEIGHT"]
+
         self.rotated_image = self.image
         self.rect = self.rotated_image.get_rect()
-        self.rect.x = 400
-        self.rect.y = 300
+        self.rect.x = 110
+        self.rect.y = 650
         self.angle = 0
         self.speed = 0
         self.speed_up = self.cfg["SPEED_UP"]
@@ -36,6 +39,7 @@ class Car(pygame.sprite.Sprite):
         self.speed_up = self.cfg["SPEED_UP"]
         self.go_backward = self.cfg["BACKWARD"]
         self.turn_angle = self.cfg["TURN_ANGLE"]
+        self.died = False
 
         self.timers = {
             "forward": Timer(0.1),
@@ -85,15 +89,29 @@ class Car(pygame.sprite.Sprite):
             self.sensors_directions[direction] = self.rotate_transform(
                 angle_change=angle_change, vector=vector)
 
-        if angle_change > 0:
-            print("Turn right: ", self.angle, "with speed: ", self.speed)
-        else:
-            print("Turn left: ", self.angle, "with speed: ", self.speed)
+        # if angle_change > 0:
+        #     print("Turn right: ", self.angle, "with speed: ", self.speed)
+        # else:
+        #     print("Turn left: ", self.angle, "with speed: ", self.speed)
 
     def translation_transform(self, amount_speed):
         x_speed = round(self.sensors_directions["f"][0] * amount_speed)
         y_speed = round(self.sensors_directions["f"][1] * amount_speed)
-        self.rect.move_ip(x_speed, y_speed)
+        new_x = self.rect.x + x_speed
+        new_y = self.rect.y + y_speed
+
+        screen_width = pygame.display.get_surface().get_width()
+        screen_height = pygame.display.get_surface().get_height()
+
+        if new_x >= 0 and new_x + self.rect.width <= screen_width:
+            self.rect.x = new_x
+        else:
+            self.speed = 0
+
+        if new_y >= 0 and new_y + self.rect.height <= screen_height:
+            self.rect.y = new_y
+        else:
+            self.speed = 0
 
     def accelerate(self):
         self.speed += self.speed_up
@@ -102,21 +120,25 @@ class Car(pygame.sprite.Sprite):
 
         self.translation_transform(self.speed)
 
-        print("Speed up: ", self.speed)
+        # print("Speed up: ", self.speed)
 
     def backward(self):
+        self.speed = 0
         self.translation_transform(self.go_backward)
 
-        print("Backward:", self.go_backward)
+        # print("Backward:", self.go_backward)
 
     def momentum(self):
-        self.speed += -0.2
-        if self.speed < 0:
-            self.speed = 0
+        self.speed += -0.1
+        if self.speed < 3:
+            self.speed = 3
 
         self.translation_transform(self.speed)
 
     def update(self, keys_pressed):
+        if self.died:
+            return
+
         if not self.timers["forward"].active:
             if keys_pressed[pygame.K_UP]:
                 self.accelerate()
@@ -146,7 +168,7 @@ class Car(pygame.sprite.Sprite):
         self.calc_corners()
 
     def reset(self):
-        pass
+        self.died = True
 
     def calc_corners(self):
         self.corners = np.array([
@@ -195,7 +217,10 @@ class Car(pygame.sprite.Sprite):
 
         iou = intersection / union
 
-        return iou < 0.95
+        if iou < 0.95:
+            return True
+
+        return False
 
 
 # pygame.init()
