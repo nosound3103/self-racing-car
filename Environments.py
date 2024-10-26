@@ -1,6 +1,7 @@
 import pygame
 import yaml
 import random
+import torch
 import cv2
 import numpy as np
 from shapely.geometry import LineString
@@ -19,19 +20,24 @@ with open("config.yml", "r") as file:
 class Environment:
     def __init__(self):
         pygame.init()
+        torch.manual_seed(0)
+        torch.cuda.manual_seed(0)
+        np.random.seed(0)
 
         self.agent = Agent()
 
         self.screen = pygame.display.set_mode(
             (cfg["Env"]["WIDTH"], cfg["Env"]["HEIGHT"]))
-        self.map = cv2.imread("images/test_map_2.png")
+
+        self.map = cv2.imread(cfg["Map"]["ROAD_3"]["IMAGE"])
         map_height, map_width, _ = self.map.shape
 
-        self.boundary = utils.find_contours(self.map).reshape(-1, 2)
-        self.boundary = utils.resize_points(
-            self.boundary,
+        self.boundary = utils.find_contours(self.map)
+        self.boundary = [utils.resize_points(
+            contour,
             (map_width, map_height),
             (cfg["Env"]["WIDTH"], cfg["Env"]["HEIGHT"]))
+            for contour in self.boundary]
 
         self.middle_line = utils.find_middle_line(self.map).reshape(-1, 2)
         self.middle_line = utils.resize_points(
@@ -39,15 +45,33 @@ class Environment:
             (map_width, map_height),
             (cfg["Env"]["WIDTH"], cfg["Env"]["HEIGHT"]))
 
-        self.game_map = pygame.image.load("images/test_map_2.png").convert()
+        self.distance = utils.calculate_total_distance(self.middle_line)
+
+        self.start_point = [cfg["Map"]["ROAD_3"]
+                            ["START_X"], cfg["Map"]["ROAD_3"]["START_Y"]]
+        self.start_point = utils.resize_points(
+            [self.start_point],
+            (map_width, map_height),
+            (cfg["Env"]["WIDTH"], cfg["Env"]["HEIGHT"]))[0]
+
+        self.end_point = [cfg["Map"]["ROAD_3"]
+                          ["END_X"], cfg["Map"]["ROAD_3"]["END_Y"]]
+
+        self.end_point = utils.resize_points(
+            [self.end_point],
+            (map_width, map_height),
+            (cfg["Env"]["WIDTH"], cfg["Env"]["HEIGHT"]))[0]
+
+        self.angle_position = cfg["Map"]["ROAD_3"]["ANGLE"]
+
+        self.game_map = pygame.image.load(
+            cfg["Map"]["ROAD_3"]["IMAGE"]).convert()
         self.game_map = pygame.transform.scale(
             self.game_map, (cfg["Env"]["WIDTH"], cfg["Env"]["HEIGHT"]))
 
-        pygame.display.set_caption("Car Racing")
+        self.total_rewards = []
 
-        self.all_car_sprites = pygame.sprite.Group()
-        for _ in range(cfg["Env"]["NUM_CARS"]):
-            self.all_car_sprites.add(Car())
+        pygame.display.set_caption("Car Racing")
 
         self.clock = pygame.time.Clock()
 
@@ -61,10 +85,14 @@ class Environment:
             p1 = self.middle_line[i]
             p2 = self.middle_line[i+1]
 
-            pygame.draw.line(self.screen, (255, 0, 0), p1, p2, 5)
+            pygame.draw.line(self.screen, (255, 0, 0), p1, p2, 1)
+
+    def draw_boundaries(self):
+        for contour in self.boundary:
+            pygame.draw.polygon(self.screen, (0, 0, 255), contour, 2)
 
     def draw_sensors(self, car):
-        sensors = car.calc_sensors(boundary=self.boundary)
+        sensors = car.calc_sensors(boundaries=self.boundary)
 
         if len(sensors):
             for _, vector in sensors.items():
@@ -77,14 +105,16 @@ class Environment:
     def reset(self):
         self.all_car_sprites = pygame.sprite.Group()
         for _ in range(cfg["Env"]["NUM_CARS"]):
-            self.all_car_sprites.add(Car())
+            self.all_car_sprites.add(
+                Car(position=self.start_point,
+                    angle_position=self.angle_position))
 
         self.total_rewards = 0
         self.speed_rewards = []
         self.middle_line_rewards = []
+        self.distance_rewards = []
 
     def step(self, car, action):
-        bonus_reward = 0
 
         if action == 0:
             car.accelerate()
@@ -95,22 +125,26 @@ class Environment:
         elif action == 2:
             car.turn(car.turn_angle)
         elif action == 3:
-            car.backward()
+            car.brake()
 
         car.calc_corners()
+
         car.died = car.is_collided(self.boundary)
 
         if car.died:
             reward = -100000
         else:
-            reward = self.calc_total_rewards(car)
+            reward = self.calc_total_rewards(
+                car)
 
         state = self.get_state(car)
         return state, reward
 
     def get_state(self, car):
         state = []
-        sensors = car.calc_sensors(boundary=self.boundary)
+        state.extend(car.corners.flatten())
+        state.append(car.speed)
+        sensors = car.calc_sensors(boundaries=self.boundary)
 
         for intersection in sensors.values():
             dist = utils.calc_distance(intersection, car.rect.center)
@@ -126,27 +160,38 @@ class Environment:
             car, LineString(self.middle_line))
 
         if distance > max_distance:
-            return -100
-        return 1
+            return -0.5
+        return 0.1
 
     def calc_speed_maintainance_reward(self, car):
-        if car.speed < car.max_speed * 0.8:
-            return -50
-        return 10
+        if car.speed < car.max_speed * 0.6:
+            return -0.5
+        return 0.1
 
-    def calc_progress_reward(self, car):
+    def calc_distance_reward(self, car):
         current_position = np.array(car.rect.center)
-        closest_point = utils.find_closest_point(
-            current_position, self.middle_line)
+        previous_position = np.array(car.previous_position)
+
+        distance = utils.calculate_distance_travelled(
+            current_position, previous_position, self.middle_line)
+
+        car.total_distance_travelled += distance
+
+        car.previous_position = current_position
+
+        return distance * 0.1 if distance > 0 else -1
 
     def calc_total_rewards(self, car):
         middle_line_reward = self.calc_middle_line_reward(car)
         speed_reward = self.calc_speed_maintainance_reward(car)
+        distance_reward = self.calc_distance_reward(car)
 
         self.middle_line_rewards.append(middle_line_reward)
         self.speed_rewards.append(speed_reward)
+        self.distance_rewards.append(distance_reward)
 
-        self.total_rewards += (middle_line_reward * 0.2 + speed_reward * 0.8)
+        self.total_rewards += (middle_line_reward +
+                               speed_reward + distance_reward)
 
         return self.total_rewards
 
@@ -162,68 +207,40 @@ class Environment:
                         pygame.quit()
                         return
 
-                self.draw_background()
-                self.draw_middle_line()
+                if episode >= 0:
+                    self.draw_background()
+                    self.draw_middle_line()
+                    self.draw_boundaries()
 
-                for i, car in enumerate(self.all_car_sprites):
-                    if car.died:
-                        continue
+                alive_cars = [
+                    car for car in self.all_car_sprites if not car.died]
 
+                if not len(alive_cars):
+                    break
+
+                for car in alive_cars:
                     state = self.get_state(car)
                     action = self.agent.choose_action(state)
 
                     next_state, reward = self.step(car, action)
-                    dones[i] = car.died
 
                     self.agent.store_transition(
                         state, action, reward, next_state, car.died)
-                    self.agent.learn()
 
-                    self.screen.blit(car.rotated_image, car.rect)
-                    self.draw_sensors(car)
-                    print(reward)
+                    if episode >= 0:
+                        self.screen.blit(car.rotated_image, car.rect)
+                        self.draw_sensors(car)
 
+                self.agent.train()
                 pygame.display.flip()
                 self.clock.tick(cfg["Env"]["FPS"])
 
-            self.total_rewards -= 100000
             print("All cars are done. Moving to next episode...")
             self.reset()
 
             print(f"Episode {episode + 1}/{num_episodes} completed.")
 
-    # def run(self):
-    #     running = True
-    #     while running:
-    #         self.draw_background()
-    #         for event in pygame.event.get():
-    #             if event.type == pygame.QUIT:
-    #                 running = False
+            if episode % 10 == 0:
+                torch.save(self.agent.Q_eval.state_dict(), 'dqn.pth')
 
-    #         keys = pygame.key.get_pressed()
-    #         for car in self.all_car_sprites:
-    #             # if car.is_collided(boundary):
-    #             #     continue
-    #             car.update(keys)
-    #             self.screen.blit(car.rotated_image, car.rect)
-
-    #             # pygame.draw.polygon(self.screen, (255, 0, 0), car.corners, 1)
-    #             sensors = car.calc_sensors(boundary=self.boundary)
-    #             if len(sensors):
-    #                 for _, vector in sensors.items():
-    #                     try:
-    #                         pygame.draw.line(self.screen, (0, 255, 0),
-    #                                          car.rect.center, vector, 1)
-    #                     except Exception:
-    #                         continue
-
-    #         pygame.draw.polygon(self.screen, (0, 0, 255), self.boundary, 1)
-    #         pygame.display.update()
-    #         pygame.display.flip()
-    #         self.clock.tick(cfg["Env"]["FPS"])
-
-    #     pygame.quit()
-
-
-env = Environment()
-env.run()
+        pygame.quit()

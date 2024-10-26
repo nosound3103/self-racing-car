@@ -2,8 +2,9 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from skimage import morphology
+from IPython import display
 
-from shapely.geometry import Point, LineString
+from shapely.geometry import Point
 
 
 def subtract(arr1, arr2):
@@ -12,11 +13,11 @@ def subtract(arr1, arr2):
 
 def find_contours(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    _, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
+    inverted = cv2.bitwise_not(gray)
+    _, thresh = cv2.threshold(inverted, 127, 255, cv2.THRESH_BINARY)
     contours, _ = cv2.findContours(
         thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    return contours[1] if len(contours) == 2 else contours[0] \
-        if len(contours) == 1 else None
+    return [contour.reshape(-1, 2) for contour in contours]
 
 
 def find_middle_line(road):
@@ -31,6 +32,32 @@ def find_middle_line(road):
         skeleton_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     return contours[0] if contours else []
+
+
+def calculate_total_distance(points):
+    total_distance = 0
+
+    for i in range(len(points)):
+        total_distance += calc_distance(points[i],
+                                        points[(i + 1) % len(points)])
+
+    return total_distance / 2
+
+
+def find_closest_point(car_pos, points):
+    closest_point = min(points, key=lambda point: np.linalg.norm(
+        np.array(car_pos) - np.array(point)))
+    return closest_point
+
+
+def calculate_distance_travelled(car_pos, prev_car_poss, points):
+    closest_current = find_closest_point(car_pos, points)
+    closest_previous = find_closest_point(prev_car_poss, points)
+
+    distance = np.linalg.norm(
+        np.array(closest_current) - np.array(closest_previous))
+
+    return distance
 
 
 def resize_points(points, old_size, new_size):

@@ -1,15 +1,66 @@
 Env:
-  WIDTH: 1600
-  HEIGHT: 800
+  WIDTH: 1200
+  HEIGHT: 900
   NUM_CARS: 1
-  FPS: 60
+  FPS: 300
 
 Car:
   IMAGE: images\car.png
-  WIDTH: 36
-  HEIGHT: 80
-  MAX_SPEED: 8
+  WIDTH: 22
+  HEIGHT: 44
+  MAX_SPEED: 20
   SPEED_UP: 5
-  BACKWARD: -3
-  MIN_SPEED: 4
+  SLOW_DOWN: -2
+  MIN_SPEED: 8
   TURN_ANGLE: 10
+
+Map:
+  ROAD_0:
+    IMAGE: images\map_0.png
+    WIDTH: 800
+    HEIGHT: 600
+    ANGLE: 0
+    START_X: 730
+    START_Y: 520
+    END_X: 380
+    END_Y: 390
+
+  ROAD_1:
+    IMAGE: images\map_1.png
+    WIDTH: 800
+    HEIGHT: 600
+    ANGLE: 0
+    START_X: 70
+    START_Y: 520
+    END_X: 420
+    END_Y: 390
+
+  # ROAD_3:
+  #   IMAGE: images\map_3.png
+  #   WIDTH: 800
+  #   HEIGHT: 600
+  #   ANGLE: 0
+  #   START_X: 54
+  #   START_Y: 540
+  #   END_X: 714
+  #   END_Y: 545
+
+  ROAD_3:
+    IMAGE: images\map_4.png
+    WIDTH: 800
+    HEIGHT: 600
+    ANGLE: -90
+    START_X: 720
+    START_Y: 50
+    END_X: 714
+    END_Y: 545
+
+  ROAD_5:
+    IMAGE: images\map_5.png
+    WIDTH: 800
+    HEIGHT: 600
+    ANGLE: -90
+    START_X: 410
+    START_Y: 545
+    END_X: 400
+    END_Y: 545
