@@ -9,10 +9,34 @@ class DeepQNetwork(nn.Module):
     def __init__(self, lr, input_dims, n_actions):
         super(DeepQNetwork, self).__init__()
 
-        self.fc1 = nn.Linear(np.prod(input_dims), 512)
-        self.fc2 = nn.Linear(512, 1024)
-        self.fc3 = nn.Linear(1024, 256)
-        self.fc4 = nn.Linear(256, n_actions)
+        self.fc1 = nn.Linear(np.prod(input_dims), 256)
+        self.bn1 = nn.BatchNorm1d(256)
+
+        self.fc2 = nn.Linear(256, 512)
+        self.bn2 = nn.BatchNorm1d(512)
+
+        self.fc3 = nn.Linear(512, 1024)
+        self.bn3 = nn.BatchNorm1d(1024)
+
+        self.fc4 = nn.Linear(1024, 1024)
+        self.bn4 = nn.BatchNorm1d(1024)
+
+        self.fc5 = nn.Linear(1024, 1024)
+        self.bn5 = nn.BatchNorm1d(1024)
+
+        self.fc6 = nn.Linear(1024, 1024)
+        self.bn6 = nn.BatchNorm1d(1024)
+
+        self.fc7 = nn.Linear(1024, 1024)
+        self.bn7 = nn.BatchNorm1d(1024)
+
+        self.fc8 = nn.Linear(1024, 512)
+        self.bn8 = nn.BatchNorm1d(512)
+
+        self.fc9 = nn.Linear(512, 256)
+        self.bn9 = nn.BatchNorm1d(256)
+
+        self.fc10 = nn.Linear(256, n_actions)
 
         self.optimizer = optim.AdamW(
             self.parameters(), lr=lr, weight_decay=1e-4)
@@ -23,24 +47,35 @@ class DeepQNetwork(nn.Module):
 
     def forward(self, state):
         state = state.view(state.size(0), -1)
-        x = F.relu(self.fc1(state))
-        x = F.relu(self.fc2(x))
-        x = F.relu(self.fc3(x))
-        actions = self.fc4(x)
+
+        x = F.relu(self.bn1(self.fc1(state)))
+        x = F.relu(self.bn2(self.fc2(x)))
+        x = F.relu(self.bn3(self.fc3(x)))
+        x = F.relu(self.bn4(self.fc4(x)))
+        x = F.relu(self.bn5(self.fc5(x)))
+        x = F.relu(self.bn6(self.fc6(x)))
+        x = F.relu(self.bn7(self.fc7(x)))
+        x = F.relu(self.bn8(self.fc8(x)))
+        x = F.relu(self.bn9(self.fc9(x)))
+
+        actions = self.fc10(x)
         return actions
 
 
 class Agent:
     def __init__(self,
+                 alpha=0.1,
                  gamma=0.9,
                  epsilon=0.9,
-                 lr=0.005,
-                 input_dims=[14],
-                 batch_size=1024,
-                 n_actions=4,
+                 lr=0.001,
+                 input_dims=[17],
+                 batch_size=512,
+                 n_actions=5,
                  max_mem_size=1000000,
                  eps_end=0.001,
                  eps_dec=5e-4):
+
+        self.alpha = alpha
         self.gamma = gamma
         self.epsilon = epsilon
         self.lr = lr
@@ -76,6 +111,7 @@ class Agent:
 
     def choose_action(self, observation):
         if np.random.random() > self.epsilon:
+            self.Q_eval.eval()
             state = torch.tensor([observation], dtype=torch.float32).to(
                 self.Q_eval.device)
             actions = self.Q_eval.forward(state)
@@ -84,10 +120,11 @@ class Agent:
             action = np.random.choice(self.action_space)
         return action
 
-    def train(self):
+    def train(self, algorithm="bellman"):
         if self.mem_cntr < self.batch_size:
             return
 
+        self.Q_eval.train()
         self.Q_eval.optimizer.zero_grad()
 
         max_mem = min(self.mem_cntr, self.mem_size)
@@ -109,11 +146,20 @@ class Agent:
         q_next = self.Q_eval.forward(new_state_batch)
         q_next[terminal_batch] = 0.0
 
-        q_target = reward_batch + self.gamma * torch.max(q_next, dim=1)[0] * \
-            (1 - terminal_batch.float())
+        if algorithm == "bellman":
+            q_target = reward_batch + self.gamma * torch.max(q_next, dim=1)[0] * \
+                (1 - terminal_batch.float())
+        elif algorithm == "td":
+            td_error = reward_batch + self.gamma * \
+                q_next[batch_index, action_batch] - q_eval
+            q_target = q_eval + self.alpha * td_error
 
         loss = self.Q_eval.loss(q_target, q_eval).to(self.Q_eval.device)
         loss.backward()
         self.Q_eval.optimizer.step()
 
         self.epsilon = max(self.eps_end, self.epsilon - self.eps_dec)
+
+    def load_model(self, path):
+        self.epsilon = 0
+        self.Q_eval.load_state_dict(torch.load(path))

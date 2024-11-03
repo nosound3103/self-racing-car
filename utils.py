@@ -79,4 +79,20 @@ def calc_distance(p1, p2):
 def calc_distance_to_middle(car, middle_line):
     car_position = Point(car.rect.center)
     distance = car_position.distance(middle_line)
+
     return distance
+
+
+def plot_reward(reward_per_episode):
+    plt.ion()
+    display.clear_output(wait=True)
+    display.display(plt.gcf())
+    plt.clf()
+    plt.title('Training...')
+    plt.xlabel('Number of Episodes')
+    plt.ylabel('Reward')
+    plt.plot(reward_per_episode)
+    plt.text(len(reward_per_episode)-1,
+             reward_per_episode[-1], str(reward_per_episode[-1]))
+    plt.show(block=False)
+    plt.pause(.1)
