@@ -32,6 +32,7 @@ class DeepQNetwork(nn.Module):
 
 class Agent:
     def __init__(self,
+                 alpha=0.1,
                  gamma=0.9,
                  epsilon=0.9,
                  lr=0.005,
@@ -41,6 +42,7 @@ class Agent:
                  max_mem_size=1000000,
                  eps_end=0.001,
                  eps_dec=5e-4):
+        self.alpha = alpha
         self.gamma = gamma
         self.epsilon = epsilon
         self.lr = lr
@@ -84,7 +86,7 @@ class Agent:
             action = np.random.choice(self.action_space)
         return action
 
-    def train(self):
+    def train(self, algorithm="bellman"):
         if self.mem_cntr < self.batch_size:
             return
 
@@ -109,11 +111,20 @@ class Agent:
         q_next = self.Q_eval.forward(new_state_batch)
         q_next[terminal_batch] = 0.0
 
-        q_target = reward_batch + self.gamma * torch.max(q_next, dim=1)[0] * \
-            (1 - terminal_batch.float())
+        if algorithm == "bellman":
+            q_target = reward_batch + self.gamma * torch.max(q_next, dim=1)[0] * \
+                (1 - terminal_batch.float())
+        elif algorithm == "td":
+            td_error = reward_batch + self.gamma * \
+                q_next[batch_index, action_batch] - q_eval
+            q_target = q_eval + self.alpha * td_error
 
         loss = self.Q_eval.loss(q_target, q_eval).to(self.Q_eval.device)
         loss.backward()
         self.Q_eval.optimizer.step()
 
         self.epsilon = max(self.eps_end, self.epsilon - self.eps_dec)
+
+    def load_model(self, path):
+        self.epsilon = 0
+        self.Q_eval.load_state_dict(torch.load(path))

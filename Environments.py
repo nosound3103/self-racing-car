@@ -114,7 +114,7 @@ class Environment:
         self.middle_line_rewards = []
         self.distance_rewards = []
 
-    def step(self, car, action):
+    def step(self, car, action, eval=False):
 
         if action == 0:
             car.accelerate()
@@ -130,6 +130,9 @@ class Environment:
         car.calc_corners()
 
         car.died = car.is_collided(self.boundary)
+
+        if eval:
+            return
 
         if car.died:
             reward = -100000
@@ -195,9 +198,12 @@ class Environment:
 
         return self.total_rewards
 
-    def run(self, num_episodes=1000):
+    def run(self, algo="bellman", num_episodes=500):
+
+        reward_per_episode = []
 
         for episode in range(num_episodes):
+            total_rewards = 0
             episode_start_time = time.time()
             dones = [False] * len(self.all_car_sprites)
 
@@ -224,6 +230,8 @@ class Environment:
 
                     next_state, reward = self.step(car, action)
 
+                    total_rewards += reward
+
                     self.agent.store_transition(
                         state, action, reward, next_state, car.died)
 
@@ -231,16 +239,68 @@ class Environment:
                         self.screen.blit(car.rotated_image, car.rect)
                         self.draw_sensors(car)
 
-                self.agent.train()
+                self.agent.train(algorithm=algo)
                 pygame.display.flip()
                 self.clock.tick(cfg["Env"]["FPS"])
 
+            reward_per_episode.append(total_rewards + 100000)
+            utils.plot_reward(reward_per_episode, f"{algo}.png")
             print("All cars are done. Moving to next episode...")
             self.reset()
 
             print(f"Episode {episode + 1}/{num_episodes} completed.")
 
             if episode % 10 == 0:
-                torch.save(self.agent.Q_eval.state_dict(), 'dqn.pth')
+                torch.save(self.agent.Q_eval.state_dict(), f'{algo}.pth')
+
+        pygame.quit()
+
+    def play(self,
+             map_name="ROAD_3",
+             weights_path="weights/dqn.pth",
+             num_episodes=50,
+             time_per_episode=30):
+
+        self.reset()
+
+        self.agent.load_model(weights_path)
+
+        for episode in range(num_episodes):
+            episode_start_time = time.time()
+            dones = [False] * len(self.all_car_sprites)
+
+            while not all(dones) and time.time() \
+                    - episode_start_time < time_per_episode:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        pygame.quit()
+                        return
+
+                self.draw_background()
+                self.draw_middle_line()
+                self.draw_boundaries()
+
+                alive_cars = [
+                    car for car in self.all_car_sprites if not car.died]
+
+                if not len(alive_cars):
+                    break
+
+                for car in alive_cars:
+                    state = self.get_state(car)
+                    action = self.agent.choose_action(state)
+
+                    self.step(car, action, eval=True)
+
+                    self.screen.blit(car.rotated_image, car.rect)
+                    self.draw_sensors(car)
+
+                pygame.display.flip()
+                self.clock.tick(cfg["Env"]["FPS"])
+
+            print("Car is done. Moving to next episode...")
+            self.reset()
+
+            print(f"Episode {episode + 1}/{num_episodes} completed.")
 
         pygame.quit()
