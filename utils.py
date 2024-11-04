@@ -57,7 +57,7 @@ def calculate_distance_travelled(car_pos, prev_car_poss, points):
     distance = np.linalg.norm(
         np.array(closest_current) - np.array(closest_previous))
 
-    return distance
+    return distance, closest_current, closest_previous
 
 
 def resize_points(points, old_size, new_size):

@@ -9,34 +9,34 @@ class DeepQNetwork(nn.Module):
     def __init__(self, lr, input_dims, n_actions):
         super(DeepQNetwork, self).__init__()
 
-        self.fc1 = nn.Linear(np.prod(input_dims), 256)
-        self.bn1 = nn.BatchNorm1d(256)
+        self.fc1 = nn.Linear(np.prod(input_dims), 64)
+        self.bn1 = nn.BatchNorm1d(64)
 
-        self.fc2 = nn.Linear(256, 512)
-        self.bn2 = nn.BatchNorm1d(512)
+        self.fc2 = nn.Linear(64, 128)
+        self.bn2 = nn.BatchNorm1d(128)
 
-        self.fc3 = nn.Linear(512, 1024)
-        self.bn3 = nn.BatchNorm1d(1024)
+        self.fc3 = nn.Linear(128, 256)
+        self.bn3 = nn.BatchNorm1d(256)
 
-        self.fc4 = nn.Linear(1024, 1024)
-        self.bn4 = nn.BatchNorm1d(1024)
+        self.fc4 = nn.Linear(256, 256)
+        self.bn4 = nn.BatchNorm1d(256)
 
-        self.fc5 = nn.Linear(1024, 1024)
-        self.bn5 = nn.BatchNorm1d(1024)
+        self.fc5 = nn.Linear(256, 256)
+        self.bn5 = nn.BatchNorm1d(256)
 
-        self.fc6 = nn.Linear(1024, 1024)
-        self.bn6 = nn.BatchNorm1d(1024)
+        self.fc6 = nn.Linear(256, 256)
+        self.bn6 = nn.BatchNorm1d(256)
 
-        self.fc7 = nn.Linear(1024, 1024)
-        self.bn7 = nn.BatchNorm1d(1024)
+        self.fc7 = nn.Linear(256, 256)
+        self.bn7 = nn.BatchNorm1d(256)
 
-        self.fc8 = nn.Linear(1024, 512)
-        self.bn8 = nn.BatchNorm1d(512)
+        self.fc8 = nn.Linear(256, 128)
+        self.bn8 = nn.BatchNorm1d(128)
 
-        self.fc9 = nn.Linear(512, 256)
-        self.bn9 = nn.BatchNorm1d(256)
+        self.fc9 = nn.Linear(128, 64)
+        self.bn9 = nn.BatchNorm1d(64)
 
-        self.fc10 = nn.Linear(256, n_actions)
+        self.fc10 = nn.Linear(64, n_actions)
 
         self.optimizer = optim.AdamW(
             self.parameters(), lr=lr, weight_decay=1e-4)
@@ -64,15 +64,15 @@ class DeepQNetwork(nn.Module):
 
 class Agent:
     def __init__(self,
-                 alpha=0.1,
+                 alpha=0.01,
                  gamma=0.9,
                  epsilon=0.9,
-                 lr=0.001,
-                 input_dims=[17],
+                 lr=0.005,
+                 input_dims=[19],
                  batch_size=512,
                  n_actions=5,
                  max_mem_size=1000000,
-                 eps_end=0.001,
+                 eps_end=0.2,
                  eps_dec=5e-4):
 
         self.alpha = alpha

@@ -94,9 +94,9 @@ class Environment:
                                              box["Y4"] * height_ratio]])
                                    for box in self.speed_bump_box]
         except Exception as e:
-            self.min_speed_sign_line,
-            self.max_speed_sign_line,
-            self.speed_bump_box = None, None, None
+            self.min_speed_sign_line = None
+            self.max_speed_sign_line = None
+            self.speed_bump_box = None
             return
 
     def draw_background(self):
@@ -123,6 +123,9 @@ class Environment:
                                      car.rect.center, vector, 1)
                 except Exception:
                     continue
+
+    def draw_car_boundary(self, car):
+        pygame.draw.polygon(self.screen, (0, 0, 255), car.corners, 2)
 
     def are_cars_collided(self, cars):
         if len(cars) < 2:
@@ -163,11 +166,11 @@ class Environment:
             for pos in self.start_pos]
 
         self.total_rewards = 0
-        self.speed_rewards = []
-        self.middle_line_rewards = []
-        self.distance_rewards = []
+        # self.speed_rewards = []
+        # self.middle_line_rewards = []
+        # self.distance_rewards = []
 
-    def step(self, car, action, time, eval=False):
+    def step(self, car, action, start_time, eval=False):
 
         if action == 0:
             car.accelerate()
@@ -190,28 +193,31 @@ class Environment:
             return
 
         if car.died:
-            reward = -200
-            if time < 10:
-                reward -= 100
-                print(reward)
+            reward = -10000
         else:
             reward = self.calc_total_rewards(
-                car)
+                car, start_time)
 
         state = self.get_state(car)
         return state, reward
 
     def get_state(self, car):
         state = []
-        state.extend(car.corners.flatten())
-        state.append(car.speed)
+        state.extend(np.array([
+            car.sensors_directions["f_l"],
+            car.sensors_directions["f_r"],
+            car.sensors_directions["b_r"],
+            car.sensors_directions["b_l"]]).flatten())
+        state.append(car.min_speed_allowed / car.max_speed_allowed)
+        state.append(car.speed / car.max_speed_allowed)
+        state.append(car.max_speed_allowed / car.max_speed_allowed)
         sensors = car.calc_sensors(boundaries=self.boundary)
         sign_interaction = self.interact_with_signs(car)
         speed_bump_interaction = self.interact_with_speed_bumps(car)
 
         for intersection in sensors.values():
             dist = utils.calc_distance(intersection, car.rect.center)
-            state.append(dist)
+            state.append(dist / np.sqrt(1200 ** 2 + 900 ** 2))
 
         return state + sign_interaction + speed_bump_interaction
 
@@ -223,47 +229,51 @@ class Environment:
             car, LineString(self.middle_line))
 
         if distance > max_distance:
-            return -0.005
-        return 0.001
+            return -0.1
+        return 0.01
 
-    def calc_speed_maintainance_reward(self,
-                                       car):
+    def calc_speed_maintainance_reward(self, car):
 
-        if car.max_speed_temporal:
-            if car.speed > car.max_speed_temporal:
-                return -0.005
+        if car.max_speed_temporal and car.speed > car.max_speed_temporal:
+            return -0.1
 
         if car.speed < car.min_speed_allowed or \
                 car.speed > car.max_speed_allowed:
-            return -0.005
-        return 0.002
+            return -0.1
+        return 0.01
 
     def calc_distance_reward(self, car):
         current_position = np.array(car.rect.center)
         previous_position = np.array(car.previous_position)
 
-        distance = utils.calculate_distance_travelled(
+        distance, _, _ = utils.calculate_distance_travelled(
             current_position, previous_position, self.middle_line)
 
         car.total_distance_travelled += distance
 
         car.previous_position = current_position
 
-        return distance * 0.01 if distance > 0 else -0.05
+        return distance * 0.01 if distance > 0 else 0.01
 
-    def calc_total_rewards(self, car):
+    def calc_total_rewards(self, car, start_time):
         middle_line_reward = self.calc_middle_line_reward(car)
         speed_reward = self.calc_speed_maintainance_reward(car)
         distance_reward = self.calc_distance_reward(car)
+        existance_reward = self.reward_existance(start_time)
 
-        self.middle_line_rewards.append(middle_line_reward)
-        self.speed_rewards.append(speed_reward)
-        self.distance_rewards.append(distance_reward)
+        # self.middle_line_rewards.append(middle_line_reward)
+        # self.speed_rewards.append(speed_reward)
+        # self.distance_rewards.append(distance_reward)
 
         self.total_rewards += (middle_line_reward +
-                               speed_reward + distance_reward)
+                               speed_reward +
+                               distance_reward +
+                               existance_reward)
 
         return self.total_rewards
+
+    def reward_existance(self, start_time):
+        return (time.time() - start_time) * 0.01
 
     def interact_with_signs(self, car):
         if not self.min_speed_sign_line and not self.max_speed_sign_line:
@@ -276,15 +286,21 @@ class Environment:
                 car.min_speed_allowed = 15
                 car.max_speed_allowed = car.max_speed
                 car.sign_history = [1, 0]
+                # print("Min speed sign")
                 return car.sign_history
 
         for sign_line in self.max_speed_sign_line:
             if car_box.intersects(sign_line):
-                car.min_speed_allowed = 0
+                car.min_speed_allowed = car.min_speed
                 car.max_speed_allowed = 10
                 car.sign_history = [0, 1]
+                # print("Max speed sign")
                 return car.sign_history
 
+        # if car.sign_history[0] == 1:
+        #     print("Min speed sign")
+        # elif car.sign_history[1] == 1:
+        #     print("Max speed sign")
         return car.sign_history
 
     def interact_with_speed_bumps(self, car):
@@ -296,6 +312,7 @@ class Environment:
         for box in self.speed_bump_box:
             if car_box.intersects(box):
                 car.max_speed_temporal = 10
+                # print("Speed bump")
                 return [1]
 
         car.max_speed_temporal = None
@@ -316,20 +333,16 @@ class Environment:
         for episode in range(num_episodes):
             total_rewards = 0
             episode_start_time = time.time()
-            dones = [False] * len(self.cars)
 
-            while not all(dones) and time.time() \
-                    - episode_start_time < time_per_episode:
-
+            while time.time() - episode_start_time < time_per_episode:
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
                         pygame.quit()
                         return
 
-                if episode >= 0:
-                    self.draw_background()
-                    self.draw_middle_line()
-                    self.draw_boundaries()
+                self.draw_background()
+                self.draw_middle_line()
+                self.draw_boundaries()
 
                 alive_cars = [
                     car for car in self.cars if not car.died]
@@ -343,23 +356,24 @@ class Environment:
                     action = self.agent.choose_action(state)
 
                     next_state, reward = self.step(
-                        car, action, time.time() - episode_start_time)
+                        car, action, episode_start_time)
 
                     total_rewards += reward
 
                     self.agent.store_transition(
                         state, action, reward, next_state, car.died)
 
-                    if episode >= 0:
-                        self.screen.blit(car.rotated_image, car.rect)
-                        self.draw_sensors(car)
+                    self.screen.blit(car.rotated_image, car.rect)
+                    self.draw_car_boundary(car)
+                    self.draw_sensors(car)
+
                 self.are_cars_collided(alive_cars)
                 self.display_speed(self.cars)
                 self.agent.train(algorithm=algo)
                 pygame.display.flip()
                 self.clock.tick(cfg["Env"]["FPS"])
 
-            reward_per_episode.append(total_rewards + 200)
+            reward_per_episode.append(total_rewards + 10000)
             utils.plot_reward(reward_per_episode)
             print("All cars are done. Moving to next episode...")
             self.reset()
@@ -367,7 +381,7 @@ class Environment:
             print(f"Episode {episode + 1}/{num_episodes} completed.")
 
             if episode % 10 == 0:
-                torch.save(self.agent.Q_eval.state_dict(), 'dqn.pth')
+                torch.save(self.agent.Q_eval.state_dict(), f'{algo}.pth')
 
         pygame.quit()
 

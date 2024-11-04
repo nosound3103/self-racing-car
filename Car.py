@@ -82,8 +82,8 @@ class Car:
             for (direction, coords) in self.sensors_directions.items()}
 
         self.calc_corners()
-        self.min_speed_allowed = 20 * 0.6
-        self.max_speed_allowed = 20
+        self.min_speed_allowed = self.min_speed
+        self.max_speed_allowed = self.max_speed
         self.max_speed_temporal = None
         self.sign_history = [0, 0]
 
@@ -111,7 +111,10 @@ class Car:
         if init:
             return
 
-        self.speed = self.min_speed
+        self.speed += self.slow_down
+
+        if self.speed < self.min_speed:
+            self.speed = self.min_speed
         self.translation_transform(self.speed)
 
         # if angle_change > 0:
