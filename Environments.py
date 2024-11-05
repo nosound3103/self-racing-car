@@ -387,7 +387,7 @@ class Environment:
 
     def play(self,
              map_name="ROAD_3",
-             weights_path="weights/dqn.pth",
+             weights_path="bellman.pth",
              num_episodes=50,
              time_per_episode=30):
 
@@ -422,11 +422,13 @@ class Environment:
                     state = self.get_state(car)
                     action = self.agent.choose_action(state)
 
-                    self.step(car, action, eval=True)
+                    self.step(
+                        car, action, start_time=episode_start_time, eval=True)
 
                     self.screen.blit(car.rotated_image, car.rect)
                     self.draw_sensors(car)
 
+                self.display_speed(self.cars)
                 pygame.display.flip()
                 self.clock.tick(cfg["Env"]["FPS"])
 
