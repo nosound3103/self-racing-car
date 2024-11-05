@@ -373,7 +373,7 @@ class Environment:
                 pygame.display.flip()
                 self.clock.tick(cfg["Env"]["FPS"])
 
-            reward_per_episode.append(total_rewards + 10000)
+            reward_per_episode.append(total_rewards / len(self.cars) + 10000)
             utils.plot_reward(reward_per_episode)
             print("All cars are done. Moving to next episode...")
             self.reset()
